@@ -64,6 +64,7 @@ preferences
         input "apiKey", "text", title: "API Key", required: true
         input "userKey", "text", title: "User Key", required: true
         input "deviceName", "text", title: "Device Name (blank for all)", required: false
+        input "pushoverMessage", "text", title: "Custom Message", required: false
         input "priority", "enum", title: "Priority", required: true,
         metadata :[
            values: [ 'Normal', 'Low', 'High', 'Emergency' ]
@@ -149,13 +150,13 @@ def handler(evt) {
                                  Math.pow(Double.parseDouble(thresholdData[1]) - Double.parseDouble(valueCoords[1]), 2) +
                                  Math.pow(Double.parseDouble(thresholdData[2]) - Double.parseDouble(valueCoords[2]), 2))
             if (dist < floatThreshold) {
-                log.debug "threeAxis distance $dist below threshold of $floatThreshold. Not firing"
+                log.debug "threeAxis distance $dist below threshold of $floatThreshold. Not firing."
                 return
             } else {
-                log.debug "threeAxis distance $dist above threshold of $floatThreshold. Firing"
+                log.debug "threeAxis distance $dist above threshold of $floatThreshold. Firing."
             }
         } else {
-            log.debug("threeAxis event does not contain threshold value and data")
+            log.debug("threeAxis event does not contain threshold value and data.")
         }
     } else {
         log.debug("Event is not threeAxis change: $evt.device, $evt.name")
@@ -166,11 +167,16 @@ def handler(evt) {
         sendPush("${evt.displayName} is ${evt.value} [Sent from 'Pushover Me When']");
     }
 
+    def postMessage = pushoverMessage
+    if (!postMessage) {
+        postMessage = "${evt.displayName} is ${evt.value}"
+    }
+
     // Define the initial postBody keys and values for all messages
     def postBody = [
         token: "$apiKey",
         user: "$userKey",
-        message: "${evt.displayName} is ${evt.value}",
+        message: postMessage,
         priority: 0
     ]
 
