@@ -40,6 +40,7 @@ preferences
         input "contactSensors", "capability.contactSensor", title: "Which Contact Sensors?", multiple: true, required: false
         input "presenceSensors", "capability.presenceSensor", title: "Which Presence Sensors?", multiple: true, required: false
         input "accelerationSensors", "capability.accelerationSensor", title: "Which Acceleration Sensors?", multiple: true, required: false
+        input "threeAxisSensors", "capability.threeAxis", title: "Which Three Axis Sensors?", multiple: true, required: false
         input "locks", "capability.lock", title: "Which Locks?", multiple: true, required: false
     }
     section("Application...") {
@@ -49,10 +50,15 @@ preferences
         ]
     }
     section("Sensor Thresholds...") {
-        input "valueThreshold", "text",
+        input "thresholdValue", "text",
             title: "Threshold Value",
             required: false
         paragraph "The string value entered here will be parsed and used internally to filter device triggers"
+        input "thresholdData", "text",
+            title: "Threshold Data",
+            required: false
+        paragraph "The string value entered here can be used for additional threshold information"
+
     }
     section("Pushover...") {
         input "apiKey", "text", title: "API Key", required: true
@@ -85,6 +91,9 @@ def initialize()
      * by subscribing only to the individual event for each type. Additional
      * logic would be required in the Preferences section and the device handler.
      */
+    log.debug "Initializing"
+
+    state.lastFiredMap = [:]
 
     if (switches) {
         // switch.on or switch.off
@@ -106,6 +115,9 @@ def initialize()
         // acceleration.active or acceleration.inactive
         subscribe(accelerationSensors, "acceleration", handler)
     }
+    if (threeAxisSensors) {
+        subscribe(threeAxisSensors, "threeAxis", handler)
+    }
     if (locks) {
         // lock.locked or lock.unlocked
         subscribe(locks, "lock", handler)
@@ -113,12 +125,40 @@ def initialize()
 }
 
 def handler(evt) {
-    log.debug "$evt.displayName is $evt.value"
+    log.debug "EVENT: $evt.displayName is $evt.value"
 
-    if (valueThreshold) {
-        if (evt.getDevice() == accelerationSensor) {
-            def floatThreshold = Float.parseFloat(valueThreshold)
+    if (evt.device.displayName.equals("threeAxisSensors") && evt.name.equals("threeAxis")) {
+        log.debug("Event is threeAxis change")
+        if (thresholdValue && thresholdData) {
+            log.debug("threeAxis event contains threshold value and data")
+            def curTime = new Date().time
+            def key = "threeAxisSensors-threeAxis"
+            def lastFiredTime = state.lastFiredMap.find{ it.key == key}?.value
+            if (!lastFiredTime) {
+                lastFiredTime = 0
+            }
+            log.debug("${curTime - lastFiredTime}ms since last firing event")
+            if (curTime - lastFiredTime < 5000) {
+                log.debug("Not enough time since last fire. Not firing.")
+                return
+            }
+            state.lastFiredMap[key] = curTime
+            def floatThreshold = Double.parseDouble(thresholdValue)
+            def valueCoords = evt.value.split(",")
+            def dist = Math.sqrt(Math.pow(Double.parseDouble(thresholdData[0]) - Double.parseDouble(valueCoords[0]), 2) +
+                                 Math.pow(Double.parseDouble(thresholdData[1]) - Double.parseDouble(valueCoords[1]), 2) +
+                                 Math.pow(Double.parseDouble(thresholdData[2]) - Double.parseDouble(valueCoords[2]), 2))
+            if (dist < floatThreshold) {
+                log.debug "threeAxis distance $dist below threshold of $floatThreshold. Not firing"
+                return
+            } else {
+                log.debug "threeAxis distance $dist above threshold of $floatThreshold. Firing"
+            }
+        } else {
+            log.debug("threeAxis event does not contain threshold value and data")
         }
+    } else {
+        log.debug("Event is not threeAxis change: $evt.device, $evt.name")
     }
 
     if (push == "Yes")
