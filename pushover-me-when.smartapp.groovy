@@ -22,6 +22,16 @@
  * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+ definition(
+    name: "Pushover Me When",
+    namespace: "SmartThingsUser001",
+    author: "SmartThingsUser001",
+    description: "Allows you to subscribe to device notifcations and forward them to pushover",
+    category: "My Apps",
+    iconUrl: "https://raw.githubusercontent.com/SmartThingsUser001/smartapp.pushover-me-when/master/images/doorbell.png",
+    iconX2Url: "https://raw.githubusercontent.com/SmartThingsUser001/smartapp.pushover-me-when/master/images/doorbell@2x.png",
+    iconX3Url: "https://raw.githubusercontent.com/SmartThingsUser001/smartapp.pushover-me-when/master/images/doorbell@3x.png")
+
 preferences
 {
     section("Devices...") {
@@ -37,7 +47,13 @@ preferences
         metadata :[
            values: [ 'No', 'Yes' ]
         ]
-     }
+    }
+    section("Sensor Thresholds...") {
+        input "valueThreshold", "text",
+            title: "Threshold Value",
+            required: false
+        paragraph "The string value entered here will be parsed and used internally to filter device triggers"
+    }
     section("Pushover...") {
         input "apiKey", "text", title: "API Key", required: true
         input "userKey", "text", title: "User Key", required: true
@@ -98,6 +114,12 @@ def initialize()
 
 def handler(evt) {
     log.debug "$evt.displayName is $evt.value"
+
+    if (valueThreshold) {
+        if (evt.getDevice() == accelerationSensor) {
+            def floatThreshold = Float.parseFloat(valueThreshold)
+        }
+    }
 
     if (push == "Yes")
     {
