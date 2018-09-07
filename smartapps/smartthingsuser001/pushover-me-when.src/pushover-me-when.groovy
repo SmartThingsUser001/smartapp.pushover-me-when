@@ -24,7 +24,7 @@
 
  definition(
     name: "Pushover Me When",
-    namespace: "SmartThingsUser001",
+    namespace: "smartthingsuser001",
     author: "SmartThingsUser001",
     description: "Allows you to subscribe to device notifcations and forward them to pushover",
     category: "My Apps",
