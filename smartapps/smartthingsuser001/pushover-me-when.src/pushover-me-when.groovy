@@ -94,7 +94,7 @@ def initialize()
      */
     log.debug "Initializing"
 
-    state.lastFiredMap = [:]
+    atomicState.stateMap = [:]
 
     if (switches) {
         // switch.on or switch.off
@@ -117,6 +117,13 @@ def initialize()
         subscribe(accelerationSensors, "acceleration", handler)
     }
     if (threeAxisSensors) {
+        if (thresholdData) {
+            atomicState.stateMap = [
+                "threeAxisSensors-threeAxis" : [
+                    "lastXYZ": thresholdData
+                ]
+            ]
+        }
         subscribe(threeAxisSensors, "threeAxis", handler)
     }
     if (locks) {
@@ -128,49 +135,70 @@ def initialize()
 def handler(evt) {
     log.debug "EVENT: $evt.displayName is $evt.value"
 
+    log.debug("State: ${atomicState.stateMap}")
+
+    def tempStateMap = atomicState.stateMap
+
     if (evt.device.displayName.equals("threeAxisSensors") && evt.name.equals("threeAxis")) {
         log.debug("Event is threeAxis change")
-        if (thresholdValue && thresholdData) {
-            log.debug("threeAxis event contains threshold value and data")
+        if (thresholdValue) {
+            log.debug("threeAxis event contains threshold value")
             def curTime = new Date().time
             def key = "threeAxisSensors-threeAxis"
-            def lastFiredTime = state.lastFiredMap.find{ it.key == key}?.value
+            def threeAxisMap = tempStateMap.find{ it.key == key }?.value
+            if (!threeAxisMap) {
+                threeAxisMap = [:]
+            }
+            def lastXYZ = threeAxisMap.find{ it.key == "lastXYZ" }?.value
+            if (!lastXYZ) {
+                lastXYZ = ["0", "0", "0"]
+            }
+            def floatThreshold = Double.parseDouble(thresholdValue)
+            def valueCoords = evt.value.split(",")
+
+            def dist = Math.sqrt(Math.pow(Double.parseDouble(lastXYZ[0]) - Double.parseDouble(valueCoords[0]), 2) +
+                                 Math.pow(Double.parseDouble(lastXYZ[1]) - Double.parseDouble(valueCoords[1]), 2) +
+                                 Math.pow(Double.parseDouble(lastXYZ[2]) - Double.parseDouble(valueCoords[2]), 2))
+            threeAxisMap["lastXYZ"] = valueCoords
+            if (dist < floatThreshold) {
+                log.debug "threeAxis distance $dist below threshold of $floatThreshold. Not firing."
+                tempStateMap[key] = threeAxisMap
+                atomicState.stateMap = tempStateMap
+                return
+            } else {
+                log.debug "threeAxis distance $dist above threshold of $floatThreshold. Firing."
+            }
+            def lastFiredTime = threeAxisMap.find{ it.key == "lastFired" }?.value
             if (!lastFiredTime) {
                 lastFiredTime = 0
             }
             log.debug("${curTime - lastFiredTime}ms since last firing event")
             if (curTime - lastFiredTime < 5000) {
+                tempStateMap[key] = threeAxisMap
+                atomicState.stateMap = tempStateMap
                 log.debug("Not enough time since last fire. Not firing.")
                 return
             }
-            state.lastFiredMap[key] = curTime
-            def floatThreshold = Double.parseDouble(thresholdValue)
-            def valueCoords = evt.value.split(",")
-            def dist = Math.sqrt(Math.pow(Double.parseDouble(thresholdData[0]) - Double.parseDouble(valueCoords[0]), 2) +
-                                 Math.pow(Double.parseDouble(thresholdData[1]) - Double.parseDouble(valueCoords[1]), 2) +
-                                 Math.pow(Double.parseDouble(thresholdData[2]) - Double.parseDouble(valueCoords[2]), 2))
-            if (dist < floatThreshold) {
-                log.debug "threeAxis distance $dist below threshold of $floatThreshold. Not firing."
-                return
-            } else {
-                log.debug "threeAxis distance $dist above threshold of $floatThreshold. Firing."
-            }
+            threeAxisMap["lastFired"] = curTime
+            tempStateMap[key] = threeAxisMap
+            atomicState.stateMap = tempStateMap
         } else {
-            log.debug("threeAxis event does not contain threshold value and data.")
+            log.debug("threeAxis event does not contain threshold value")
         }
     } else {
         log.debug("Event is not threeAxis change: $evt.device, $evt.name")
-    }
-
-    if (push == "Yes")
-    {
-        sendPush("${evt.displayName} is ${evt.value} [Sent from 'Pushover Me When']");
     }
 
     def postMessage = pushoverMessage
     if (!postMessage) {
         postMessage = "${evt.displayName} is ${evt.value}"
     }
+
+    if (push == "Yes")
+    {
+        sendPush(postMessage);
+    }
+
 
     // Define the initial postBody keys and values for all messages
     def postBody = [
