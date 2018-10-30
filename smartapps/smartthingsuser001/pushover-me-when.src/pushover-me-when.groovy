@@ -103,7 +103,7 @@ def handler(evt) {
         return
     }
 
-    log.debug "Sending event! ${observed} > ${doubleThreshold}"
+    log.debug "Sending event! ${observed} >= ${doubleThreshold}"
 
     def postMessage = pushoverMessage
     if (!postMessage) {
