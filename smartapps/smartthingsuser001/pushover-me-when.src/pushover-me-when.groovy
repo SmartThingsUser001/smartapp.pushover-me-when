@@ -35,13 +35,7 @@
 preferences
 {
     section("Devices...") {
-        input "switches", "capability.switch", title: "Which Switches?", multiple: true, required: false
-        input "motionSensors", "capability.motionSensor", title: "Which Motion Sensors?", multiple: true, required: false
-        input "contactSensors", "capability.contactSensor", title: "Which Contact Sensors?", multiple: true, required: false
-        input "presenceSensors", "capability.presenceSensor", title: "Which Presence Sensors?", multiple: true, required: false
-        input "accelerationSensors", "capability.accelerationSensor", title: "Which Acceleration Sensors?", multiple: true, required: false
-        input "threeAxisSensors", "capability.threeAxis", title: "Which Three Axis Sensors?", multiple: true, required: false
-        input "locks", "capability.lock", title: "Which Locks?", multiple: true, required: false
+        input "voltageSensors", "capability.voltageMeasurement", title: "Which Voltage Sensors?", multiple: true, required: false
     }
     section("Application...") {
         input "push", "enum", title: "SmartThings App Notification?", required: true, multiple: false,
@@ -52,13 +46,8 @@ preferences
     section("Sensor Thresholds...") {
         input "thresholdValue", "text",
             title: "Threshold Value",
-            required: false
+            required: true
         paragraph "The string value entered here will be parsed and used internally to filter device triggers"
-        input "thresholdData", "text",
-            title: "Threshold Data",
-            required: false
-        paragraph "The string value entered here can be used for additional threshold information"
-
     }
     section("Pushover...") {
         input "apiKey", "text", title: "API Key", required: true
@@ -94,100 +83,27 @@ def initialize()
      */
     log.debug "Initializing"
 
-    atomicState.stateMap = [:]
-
-    if (switches) {
-        // switch.on or switch.off
-        subscribe(switches, "switch", handler)
-    }
-    if (motionSensors) {
-        // motion.active or motion.inactive
-        subscribe(motionSensors, "motion", handler)
-    }
-    if (contactSensors) {
-        // contact.open or contact.closed
-        subscribe(contactSensors, "contact", handler)
-    }
-    if (presenceSensors) {
-        // presence.present or 'presence.not present'  (Why the space? It is dumb.)
-        subscribe(presenceSensors, "presence", handler)
-    }
-    if (accelerationSensors) {
-        // acceleration.active or acceleration.inactive
-        subscribe(accelerationSensors, "acceleration", handler)
-    }
-    if (threeAxisSensors) {
-        if (thresholdData) {
-            atomicState.stateMap = [
-                "threeAxisSensors-threeAxis" : [
-                    "lastXYZ": thresholdData
-                ]
-            ]
-        }
-        subscribe(threeAxisSensors, "threeAxis", handler)
-    }
-    if (locks) {
-        // lock.locked or lock.unlocked
-        subscribe(locks, "lock", handler)
+    if (voltageSensors) {
+        // voltage value
+        subscribe(voltageSensors, "voltage", handler)
     }
 }
 
 def handler(evt) {
-    log.debug "EVENT: $evt.displayName is $evt.value"
+    log.debug "EVENT: $evt.name is $evt.value"
 
-    log.debug("State: ${atomicState.stateMap}")
-
-    def tempStateMap = atomicState.stateMap
-
-    if (evt.device.displayName.equals("threeAxisSensors") && evt.name.equals("threeAxis")) {
-        log.debug("Event is threeAxis change")
-        if (thresholdValue) {
-            log.debug("threeAxis event contains threshold value")
-            def curTime = new Date().time
-            def key = "threeAxisSensors-threeAxis"
-            def threeAxisMap = tempStateMap.find{ it.key == key }?.value
-            if (!threeAxisMap) {
-                threeAxisMap = [:]
-            }
-            def lastXYZ = threeAxisMap.find{ it.key == "lastXYZ" }?.value
-            if (!lastXYZ) {
-                lastXYZ = ["0", "0", "0"]
-            }
-            def floatThreshold = Double.parseDouble(thresholdValue)
-            def valueCoords = evt.value.split(",")
-
-            def dist = Math.sqrt(Math.pow(Double.parseDouble(lastXYZ[0]) - Double.parseDouble(valueCoords[0]), 2) +
-                                 Math.pow(Double.parseDouble(lastXYZ[1]) - Double.parseDouble(valueCoords[1]), 2) +
-                                 Math.pow(Double.parseDouble(lastXYZ[2]) - Double.parseDouble(valueCoords[2]), 2))
-            threeAxisMap["lastXYZ"] = valueCoords
-            if (dist < floatThreshold) {
-                log.debug "threeAxis distance $dist below threshold of $floatThreshold. Not firing."
-                tempStateMap[key] = threeAxisMap
-                atomicState.stateMap = tempStateMap
-                return
-            } else {
-                log.debug "threeAxis distance $dist above threshold of $floatThreshold. Firing."
-            }
-            def lastFiredTime = threeAxisMap.find{ it.key == "lastFired" }?.value
-            if (!lastFiredTime) {
-                lastFiredTime = 0
-            }
-            log.debug("${curTime - lastFiredTime}ms since last firing event")
-            if (curTime - lastFiredTime < 5000) {
-                tempStateMap[key] = threeAxisMap
-                atomicState.stateMap = tempStateMap
-                log.debug("Not enough time since last fire. Not firing.")
-                return
-            }
-            threeAxisMap["lastFired"] = curTime
-            tempStateMap[key] = threeAxisMap
-            atomicState.stateMap = tempStateMap
-        } else {
-            log.debug("threeAxis event does not contain threshold value")
+    if (evt.name == "voltage") {
+        def doubleThreshold = Double.parseDouble(thresholdValue)
+        def observed = evt.numberValue
+        if (observed < doubleThreshold) {
+            log.debug "Not sending event: ${observed} < ${doubleThreshold}"
+            return
         }
     } else {
-        log.debug("Event is not threeAxis change: $evt.device, $evt.name")
+        return
     }
+
+    log.debug "Sending event! ${observed} > ${doubleThreshold}"
 
     def postMessage = pushoverMessage
     if (!postMessage) {
