@@ -18,15 +18,12 @@ metadata {
     // Automatically generated. Make future change here.
     definition (name: "FortrezZ MIMOlite", namespace: "fortrezz", author: "FortrezZ, LLC") {
         capability "Configuration"
-        capability "Switch"
         capability "Refresh"
         capability "Contact Sensor"
         capability "Voltage Measurement"
+        capability "Button"
 
         attribute "powered", "string"
-
-        command "on"
-        command "off"
         
         fingerprint deviceId: "0x1000", inClusters: "0x72,0x86,0x71,0x30,0x31,0x35,0x70,0x85,0x25,0x03"
     }
@@ -42,33 +39,19 @@ metadata {
 
 
     // UI tile definitions 
-    tiles (scale: 2) {
-        standardTile("switch", "device.switch", width: 4, height: 4, canChangeIcon: false, decoration: "flat") {
-            state "on", label: "On", action: "off", icon: "http://swiftlet.technology/wp-content/uploads/2016/06/Switch-On-104-edit.png", backgroundColor: "#53a7c0"
-            state "off", label: 'Off', action: "on", icon: "http://swiftlet.technology/wp-content/uploads/2016/06/Switch-Off-104-edit.png", backgroundColor: "#ffffff"
+    tiles {
+        standardTile("button", "device.button", width: 2, height: 2) {
+            state "default", label: ".....", action: "pushed", icon: "st.Home.home30", backgroundColor: "#B0E0E6"
+            state "pushed", label: "Ding-Dong", icon: "st.Home.home30", backgroundColor: "#53a7c0"
         }
-        standardTile("contact", "device.contact", width: 2, height: 2, inactiveLabel: false) {
-            state "open", label: '${name}', icon: "st.contact.contact.open", backgroundColor: "#ffa81e"
-            state "closed", label: '${name}', icon: "st.contact.contact.closed", backgroundColor: "#79b821"
-        }
-        standardTile("refresh", "device.switch", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
-            state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
-        }
-        standardTile("powered", "device.powered", width: 2, height: 2, inactiveLabel: false) {
-            state "powerOn", label: "Power On", icon: "st.switches.switch.on", backgroundColor: "#79b821"
-            state "powerOff", label: "Power Off", icon: "st.switches.switch.off", backgroundColor: "#ffa81e"
-        }
-        standardTile("configure", "device.configure", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
+        standardTile("configure", "device.configure", inactiveLabel: false, decoration: "flat") {
             state "configure", label:'', action:"configuration.configure", icon:"st.secondary.configure"
         }
-        valueTile("voltage", "device.voltage", width: 2, height: 2) {
-            state "val", label:'${currentValue}v', unit:"", defaultState: true
+        standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat") {
+            state "default", action:"refresh.refresh", icon:"st.secondary.refresh"
         }
-        valueTile("voltageCounts", "device.voltageCounts", width: 2, height: 2) {
-            state "val", label:'${currentValue}', unit:"", defaultState: true
-        }
-        main (["switch"])
-        details(["switch", "contact", "voltage", "voltageCounts", "powered", "refresh","configure"])
+        main (["button"])
+        details(["button", "configure", "refresh"])
     }
 }
 
@@ -82,9 +65,9 @@ def parse(String description) {
     
     if (cmd.CMD == "7105") {                //Mimo sent a power loss report
         log.debug "Device lost power"
-        sendEvent(name: "powered", value: "powerOff", descriptionText: "$device.displayName lost power")
     } else {
-        sendEvent(name: "powered", value: "powerOn", descriptionText: "$device.displayName regained power")
+        log.debug "Device gained power"
+        sendEvent(name: "button", value: "pushed", descriptionText: "$device.displayName was pressed", unit : "" )
     }
     //log.debug "${device.currentValue('contact')}" // debug message to make sure the contact tile is working
     if (cmd) {
@@ -103,7 +86,7 @@ def updated() {
 // not doing so will produce a null on the parse function, this will mess you up in the future.
 // Perhaps can use 'createEvent()' and return that as long as a map is inside it.
 def zwaveEvent(physicalgraph.zwave.commands.switchbinaryv1.SwitchBinaryReport cmd) { 
-    log.debug "switchBinaryReport ${cmd}"
+    //log.debug "switchBinaryReport ${cmd}"
     if (cmd.value) // if the switch is on it will not be 0, so on = true
     {
         return [name: "switch", value: "on"] // change switch value to on
@@ -118,7 +101,7 @@ def zwaveEvent(physicalgraph.zwave.commands.switchbinaryv1.SwitchBinaryReport cm
 // working on next for the analogue and digital stuff.
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicSet cmd) // basic set is essentially our digital sensor for SIG1
 {
-    log.debug "sent a BasicSet command"
+    //log.debug "sent a BasicSet command"
     //refresh()  
     delayBetween([zwave.sensorMultilevelV5.sensorMultilevelGet().format()])// requests a report of the anologue input voltage
     return [name: "contact", value: cmd.value ? "open" : "closed"]}
@@ -126,7 +109,7 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicSet cmd) // basic set i
     
 def zwaveEvent(physicalgraph.zwave.commands.sensorbinaryv1.SensorBinaryReport cmd)
 {
-    log.debug "sent a sensorBinaryReport command"
+    //log.debug "sent a sensorBinaryReport command"
     //refresh()    
     return [name: "sensor", value: cmd.sensorValue ? "active" : "inactive"]
 }
@@ -135,7 +118,7 @@ def zwaveEvent(physicalgraph.zwave.commands.sensorbinaryv1.SensorBinaryReport cm
     
 def zwaveEvent (physicalgraph.zwave.commands.sensormultilevelv5.SensorMultilevelReport cmd) // sensorMultilevelReport is used to report the value of the analog voltage for SIG1
 {
-    log.debug "sent a SensorMultilevelReport"
+    //log.debug "sent a SensorMultilevelReport"
     def ADCvalue = cmd.scaledSensorValue
     sendEvent(name: "voltageCounts", value: ADCvalue)
    
@@ -225,15 +208,12 @@ def CalculateVoltage(ADCvalue)
 
 def configure() {
     def x = (RelaySwitchDelay*10).toInteger()
-  //log.debug "Configuring.... " //setting up to monitor power alarm and actuator duration
+    log.debug "Configuring with delay of $x.... " //setting up to monitor power alarm and actuator duration
     
     delayBetween([
         zwave.associationV1.associationSet(groupingIdentifier:3, nodeId:[zwaveHubNodeId]).format(), //  FYI: Group 3: If a power dropout occurs, the MIMOlite will send an Alarm Command Class report 
                                                                                                     //  (if there is enough available residual power)
-        zwave.associationV1.associationSet(groupingIdentifier:2, nodeId:[zwaveHubNodeId]).format(), // periodically send a multilevel sensor report of the ADC analog voltage to the input
-        zwave.associationV1.associationSet(groupingIdentifier:4, nodeId:[zwaveHubNodeId]).format(), // when the input is digitally triggered or untriggered, snd a binary sensor report
         zwave.configurationV1.configurationSet(configurationValue: [x], parameterNumber: 11, size: 1).format() // configurationValue for parameterNumber means how many 100ms do you want the relay
-                                                                                                                // to wait before it cycles again / size should just be 1 (for 1 byte.)
-        //zwave.configurationV1.configurationGet(parameterNumber: 11).format() // gets the new parameter changes. not currently needed. (forces a null return value without a zwaveEvent funciton
+                                                                                                               // to wait before it cycles again / size should just be 1 (for 1 byte.)
     ])
 }

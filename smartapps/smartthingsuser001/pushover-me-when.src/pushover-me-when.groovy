@@ -34,20 +34,14 @@
 
 preferences
 {
-    section("Devices...") {
-        input "voltageSensors", "capability.voltageMeasurement", title: "Which Voltage Sensors?", multiple: true, required: false
+    section("Choose one or more, when..."){
+        input "buttons", "capability.button", title: "Button Pushed", required: false, multiple: true //tw
     }
     section("Application...") {
         input "push", "enum", title: "SmartThings App Notification?", required: true, multiple: false,
         metadata :[
            values: [ 'No', 'Yes' ]
         ]
-    }
-    section("Sensor Thresholds...") {
-        input "thresholdValue", "text",
-            title: "Threshold Value",
-            required: true
-        paragraph "The string value entered here will be parsed and used internally to filter device triggers"
     }
     section("Pushover...") {
         input "apiKey", "text", title: "API Key", required: true
@@ -83,37 +77,17 @@ def initialize()
      */
     log.debug "Initializing"
 
-    // voltageSensors.each { sen ->
-    //     log.debug "SENSOR: ${sen.name}"
-    //     sen.capabilities.each { cap ->
-    //         log.debug "CAP: ${cap.name}"
-    //         cap.attributes.each { attr ->
-    //             log.debug "ATTR: ${attr.name}"
-    //         }
-    //     }
-    // }
-
-    if (voltageSensors) {
-        // voltage value
-        subscribe(voltageSensors, "voltage", handler)
-    }
+    subscribe(buttons, "button.pushed", handler) //tw
 }
 
 def handler(evt) {
     log.debug "EVENT: $evt.name is $evt.value"
 
-    if (evt.name == "voltage") {
-        def doubleThreshold = Double.parseDouble(thresholdValue)
-        def observed = evt.numberValue
-        if (observed < doubleThreshold) {
-            log.debug "Not sending event: ${observed} < ${doubleThreshold}"
-            return
-        }
+    if (evt.name == "pushed") {
+        log.debug "Sending event!"
     } else {
         return
     }
-
-    log.debug "Sending event! ${observed} >= ${doubleThreshold}"
 
     def postMessage = pushoverMessage
     if (!postMessage) {
