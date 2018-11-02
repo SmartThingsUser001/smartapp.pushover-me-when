@@ -83,6 +83,16 @@ def initialize()
      */
     log.debug "Initializing"
 
+    // voltageSensors.each { sen ->
+    //     log.debug "SENSOR: ${sen.name}"
+    //     sen.capabilities.each { cap ->
+    //         log.debug "CAP: ${cap.name}"
+    //         cap.attributes.each { attr ->
+    //             log.debug "ATTR: ${attr.name}"
+    //         }
+    //     }
+    // }
+
     if (voltageSensors) {
         // voltage value
         subscribe(voltageSensors, "voltage", handler)
