@@ -1,28 +1,14 @@
 /**
- *  Pushover Me When
+ *  Notify Me When
  *
- *  Author: jnovack@gmail.com
- *  Date: 2013-08-22
- *  Code: https://github.com/smartthings-users/smartapp.pushover-me-when
+ *  Author: SmartThings
+ *  Date: 2013-03-20
  *
- * Copyright (C) 2013 Justin J. Novack <jnovack@gmail.com>
- * Permission is hereby granted, free of charge, to any person obtaining a copy of this
- * software and associated documentation files (the "Software"), to deal in the Software
- * without restriction, including without limitation the rights to use, copy, modify,
- * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to the following
- * conditions: The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
- * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
- * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
- * CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
- * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * Change Log:
+ *  1. Todd Wackford
+ *  2014-10-03: Added capability.button device picker and button.pushed event subscription. For Doorbell.
  */
-
- definition(
+definition(
     name: "Pushover Me When",
     namespace: "smartthingsuser001",
     author: "SmartThingsUser001",
@@ -32,15 +18,25 @@
     iconX2Url: "https://raw.githubusercontent.com/SmartThingsUser001/smartapp.pushover-me-when/master/images/doorbell@2x.png",
     iconX3Url: "https://raw.githubusercontent.com/SmartThingsUser001/smartapp.pushover-me-when/master/images/doorbell@3x.png")
 
-preferences
-{
+
+preferences {
     section("Choose one or more, when..."){
-        input "buttons", "capability.button", title: "Button Pushed", required: false, multiple: true //tw
+        input "button", "capability.button", title: "Button Pushed", required: false, multiple: true //tw
+        input "motion", "capability.motionSensor", title: "Motion Here", required: false, multiple: true
+        input "contact", "capability.contactSensor", title: "Contact Opens", required: false, multiple: true
+        input "contactClosed", "capability.contactSensor", title: "Contact Closes", required: false, multiple: true
+        input "acceleration", "capability.accelerationSensor", title: "Acceleration Detected", required: false, multiple: true
+        input "mySwitch", "capability.switch", title: "Switch Turned On", required: false, multiple: true
+        input "mySwitchOff", "capability.switch", title: "Switch Turned Off", required: false, multiple: true
+        input "arrivalPresence", "capability.presenceSensor", title: "Arrival Of", required: false, multiple: true
+        input "departurePresence", "capability.presenceSensor", title: "Departure Of", required: false, multiple: true
+        input "smoke", "capability.smokeDetector", title: "Smoke Detected", required: false, multiple: true
+        input "water", "capability.waterSensor", title: "Water Sensor Wet", required: false, multiple: true
     }
     section("Application...") {
         input "push", "enum", title: "SmartThings App Notification?", required: true, multiple: false,
         metadata :[
-           values: [ 'No', 'Yes' ]
+            values: [ 'No', 'Yes' ]
         ]
     }
     section("Pushover...") {
@@ -53,58 +49,65 @@ preferences
            values: [ 'Normal', 'Low', 'High', 'Emergency' ]
         ]
     }
+    section("Minimum time between messages (optional, defaults to every message)") {
+        input "frequency", "decimal", title: "Seconds", required: false
+    }
 }
 
-def installed()
-{
-    log.debug "'Pushover Me When' installed with settings: ${settings}"
-    initialize()
+def installed() {
+    log.debug "Installed with settings: ${settings}"
+    subscribeToEvents()
 }
 
-def updated()
-{
-    log.debug "'Pushover Me When' updated with settings: ${settings}"
+def updated() {
+    log.debug "Updated with settings: ${settings}"
     unsubscribe()
-    initialize()
+    subscribeToEvents()
 }
 
-def initialize()
-{
-    /**
-     * You can customize each of these to only receive one type of notification
-     * by subscribing only to the individual event for each type. Additional
-     * logic would be required in the Preferences section and the device handler.
-     */
-    log.debug "Initializing"
-
-    subscribe(buttons, "button.pushed", handler) //tw
+def subscribeToEvents() {
+    subscribe(button, "button.pushed", eventHandler) //tw
+    subscribe(contact, "contact.open", eventHandler)
+    subscribe(contactClosed, "contact.closed", eventHandler)
+    subscribe(acceleration, "acceleration.active", eventHandler)
+    subscribe(motion, "motion.active", eventHandler)
+    subscribe(mySwitch, "switch.on", eventHandler)
+    subscribe(mySwitchOff, "switch.off", eventHandler)
+    subscribe(arrivalPresence, "presence.present", eventHandler)
+    subscribe(departurePresence, "presence.not present", eventHandler)
+    subscribe(smoke, "smoke.detected", eventHandler)
+    subscribe(smoke, "smoke.tested", eventHandler)
+    subscribe(smoke, "carbonMonoxide.detected", eventHandler)
+    subscribe(water, "water.wet", eventHandler)
 }
 
-def handler(evt) {
-    log.debug "EVENT: $evt.name is $evt.value"
-
-    if (evt.name == "pushed") {
-        log.debug "Sending event!"
-    } else {
-        return
+def eventHandler(evt) {
+    log.debug "Notify got evt ${evt}"
+    if (frequency) {
+        def lastTime = state[evt.deviceId]
+        if (lastTime == null || now() - lastTime >= frequency * 1000) {
+            sendMessage(evt)
+        }
     }
-
-    def postMessage = pushoverMessage
-    if (!postMessage) {
-        postMessage = "${evt.displayName} is ${evt.value}"
+    else {
+        sendMessage(evt)
     }
+}
 
-    if (push == "Yes")
-    {
-        sendPush(postMessage);
+private sendMessage(evt) {
+    def msg = pushoverMessage ?: defaultText(evt)
+    if (push == "Yes") {
+        log.debug "$evt.name:$evt.value, pushAndPhone:$pushAndPhone, '$msg'"
+
+        log.debug "sending push"
+        sendPush(msg)
     }
-
 
     // Define the initial postBody keys and values for all messages
     def postBody = [
         token: "$apiKey",
         user: "$userKey",
-        message: postMessage,
+        message: msg,
         priority: 0
     ]
 
@@ -113,11 +116,9 @@ def handler(evt) {
         case "Low":
             postBody['priority'] = -1
             break
-
         case "High":
             postBody['priority'] = 1
             break
-
         case "Emergency":
             postBody['priority'] = 2
             postBody['retry'] = "60"
@@ -126,13 +127,10 @@ def handler(evt) {
     }
 
     // We only have to define the device if we are sending to a single device
-    if (deviceName)
-    {
+    if (deviceName) {
         log.debug "Sending Pushover to Device: $deviceName"
         postBody['device'] = "$deviceName"
-    }
-    else
-    {
+    } else {
         log.debug "Sending Pushover to All Devices"
     }
 
@@ -144,24 +142,51 @@ def handler(evt) {
 
     log.debug postBody
 
-    if ((apiKey =~ /[A-Za-z0-9]{30}/) && (userKey =~ /[A-Za-z0-9]{30}/))
-    {
+    if ((apiKey =~ /[A-Za-z0-9]{30}/) && (userKey =~ /[A-Za-z0-9]{30}/)) {
         log.debug "Sending Pushover: API key '${apiKey}' | User key '${userKey}'"
-        httpPost(params){
+        httpPost(params) {
             response ->
-                if(response.status != 200)
-                {
+                if(response.status != 200) {
                     sendPush("ERROR: 'Pushover Me When' received HTTP error ${response.status}. Check your keys!")
                     log.error "Received HTTP error ${response.status}. Check your keys!"
-                }
-                else
-                {
+                } else {
                     log.debug "HTTP response received [$response.status]"
                 }
         }
     }
-    else {
-        // Do not sendPush() here, the user may have intentionally set up bad keys for testing.
-        log.error "API key '${apiKey}' or User key '${userKey}' is not properly formatted!"
+
+    if (frequency) {
+        state[evt.deviceId] = now()
     }
+
+}
+
+private defaultText(evt) {
+    if (evt.name == "presence") {
+        if (evt.value == "present") {
+            if (includeArticle) {
+                "$evt.linkText has arrived at the $location.name"
+            }
+            else {
+                "$evt.linkText has arrived at $location.name"
+            }
+        }
+        else {
+            if (includeArticle) {
+                "$evt.linkText has left the $location.name"
+            }
+            else {
+                "$evt.linkText has left $location.name"
+            }
+        }
+    }
+    else {
+        evt.descriptionText
+    }
+}
+
+private getIncludeArticle() {
+    def name = location.name.toLowerCase()
+    def segs = name.split(" ")
+    !(["work","home"].contains(name) || (segs.size() > 1 && (["the","my","a","an"].contains(segs[0]) || segs[0].endsWith("'s"))))
 }
