@@ -84,19 +84,25 @@ def subscribeToEvents() {
 def eventHandler(evt) {
     log.debug "Notify got evt ${evt}"
     if (frequency) {
+        log.debug "Frequency defined at $frequency"
         def lastTime = state[evt.deviceId]
-        if (lastTime == null || now() - lastTime >= frequency * 1000) {
+        log.debug "Last time was $lastTime"
+        if (lastTime) {
+            def timeSince = now() - lastTime
+            def delay = frequency * 1000
+            log.debug "Time since: $timeSince <-> $delay"
+        }
+        if (lastTime == null || timeSince >= delay) {
             sendMessage(evt)
         }
-    }
-    else {
+    } else {
         sendMessage(evt)
     }
 }
 
 private sendMessage(evt) {
     def msg = pushoverMessage ?: defaultText(evt)
-    if (push == "Yes") {
+    if (push == 1 || push == "1" || push == "Yes") {
         log.debug "$evt.name:$evt.value, pushAndPhone:$pushAndPhone, '$msg'"
 
         log.debug "sending push"
